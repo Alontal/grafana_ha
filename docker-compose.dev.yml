@@ -1,0 +1,112 @@
+version: "2.1"
+
+services:
+  nginx:
+    image: nginx
+    container_name: nginx
+    volumes:
+      - ./nginx/config/nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - 80:80
+      # - 443:443
+    depends_on:
+      db:
+        condition: service_healthy
+  # logging:
+  #   driver: "fluentd"
+  #   options:
+  #     tag: nginx
+
+  db:
+    container_name: mysql
+    image: mysql:5.6
+    env_file:
+      - ./.env
+    command:
+      [
+        mysqld,
+        --character-set-server=utf8mb4,
+        --collation-server=utf8mb4_unicode_ci,
+        --innodb_monitor_enable=all,
+        --max-connections=1001,
+      ]
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 10s
+      retries: 10
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter
+    env_file:
+      - ./.env
+    ports:
+      - 9104
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # db:
+  #   image: postgres:9.3
+  #   environment:
+  #     POSTGRES_DATABASE: grafana
+  #     POSTGRES_USER: grafana
+  #     POSTGRES_PASSWORD: password
+  #   ports:
+  #     - 5432
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -d grafana -U grafana"]
+  #     timeout: 10s
+  #     retries: 10
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana
+    # user: ${USER}
+    volumes:
+      - ./grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+    env_file:
+      - ./.env
+    ports:
+      - 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    # logging:
+    #   driver: "fluentd"
+    #   options:
+    #     tag: grafana
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v2.4.2
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+    env_file:
+      - ./.env
+    ports:
+      - 9090
+  ######
+  # loki:
+  #   image: grafana/loki:master
+  #   environment:
+  #     - VIRTUAL_HOST=loki.localhost
+  #   ports:
+  #     - 3100
+  #   command: -config.file=/etc/loki/local-config.yaml
+  ######
+  # fluentd:
+  #   image: grafana/fluent-plugin-loki:master
+  #   volumes:
+  #     - ./fluentd/fluentd.conf:/fluentd/etc/fluentd.conf
+  #   links:
+  #     - loki
+  #   ports:
+  #     - "24224:24224"
+  #     - "24224:24224/udp"
+
+volumes:
+  grafana-storage:
+# docker-compose -f docker-compose-dev.yml up --build
